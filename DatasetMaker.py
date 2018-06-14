@@ -1,7 +1,6 @@
 import sys
 import cv2
 import os
-import numpy as np
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QLabel, \
     QVBoxLayout, QHBoxLayout, QSizePolicy, \
     QScrollArea, QPushButton, QLineEdit
