@@ -98,42 +98,115 @@ READOUT_COORDS = [
     ((1564, 1004), (1628, 1068)), ((1613, 1004), (1677, 1068))
 ]
 
-# READOUT_CLASSES = ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', )
+CORRUPTED_CLASS = 10
+SPACE_CLASS = 11
+
+# печь
+FURNACE_INDEXES = (0, 4)
+# тигель
+CRUCIBLE_INDEXES = (4, 8)
+# проволока
+WIRE_INDEXES = (8, 10)
+WIRE_FORMAT = '0.{0}'
 
 
+DEFAULT_FPS = 40
+NUM_EVAL_FRAMES = 5
 
-model = MetallurgNet()
-model.load_state_dict(torch.load('/home/poxyu/work/metallurg/ex1/algorithm/model.pt'))
-
-model.eval()
-
-data_transform = Compose([
-    Normalize(),
-    ToTensor()
-])
+MODEL_FILENAME = '/home/poxyu/work/metallurg/ex1/algorithm/model.pt'
+VIDEO_FILENAME = '/home/poxyu/work/metallurg/ex1/ex1.avi'
 
 
-# img = cv2.imread('/home/poxyu/work/metallurg/ex1/algorithm/0.png', 0)
-cap = cv2.VideoCapture('/home/poxyu/work/metallurg/ex1/ex1.avi')
-_, img = cap.read()
-_, img = cap.read()
-_, img = cap.read()
-_, img = cap.read()
-_, img = cap.read()
-img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-digits = []
-for coords in READOUT_COORDS:
-    left_top, right_bottom = coords
-    left, top = left_top
-    right, bottom = right_bottom
-    digit = img[top:bottom, left:right]
-    digits.append(digit)
+def get_fps(cap):
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    if fps == 0:
+        fps = DEFAULT_FPS
+    return fps
 
-digits = data_transform(np.array(digits))
+
+def get_digits(frames):
+    digits = []
+    for frame in frames:
+        for coords in READOUT_COORDS:
+            left_top, right_bottom = coords
+            left, top = left_top
+            right, bottom = right_bottom
+            digit = frame[top:bottom, left:right]
+            digit = cv2.cvtColor(digit, cv2.COLOR_BGR2GRAY)
+            digits.append(digit)
+    digits = data_transform(np.array(digits))
+    return digits
+
+def parse_digits(model, digits):
+    inputs = Variable(digits)
+    outputs = softmax(model(inputs))
+    confidence, predicted = torch.max(outputs.data, 1)
+    # reshape
+    confidence = confidence.view(NUM_EVAL_FRAMES, -1)
+    predicted = predicted.view(NUM_EVAL_FRAMES, -1)
+    # max confidence
+    confidence, indexes = torch.max(confidence, 0)
+    # to numpy
+    confidence = confidence.numpy()
+    indexes = indexes.numpy()
+    predicted = predicted.numpy()
+    # best prediction by confidence
+    predicted = predicted[indexes, np.arange(predicted.shape[1])]
+    return confidence, predicted
+
+
+def get_readout(predicted, indexes, readout_format='{0}'):
+    readout = predicted[indexes[0]:indexes[1]]
+    prev_digit = SPACE_CLASS
+    result = ''
+    for digit in readout:
+        if digit == CORRUPTED_CLASS or \
+            (digit == SPACE_CLASS and prev_digit != SPACE_CLASS):
+            return 'NULL'
+        elif digit != SPACE_CLASS:
+            result += str(digit)
+        prev_digit = digit
+    return readout_format.format(result)
+
+
+def get_metallurg_net(filename):
+    model = MetallurgNet()
+    model.load_state_dict(torch.load(filename))
+    model.eval()
+    return model
+
+
+def get_data_transform():
+    return Compose([Normalize(), ToTensor()])
+
+
+model = get_metallurg_net(MODEL_FILENAME)
+data_transform = get_data_transform()
+
+
+cap = cv2.VideoCapture(VIDEO_FILENAME)
+fps = get_fps(cap)
+
+read_video = True
+while read_video:
+    frames = []
+    for frame_n in range(fps):
+        ret, frame = cap.read()
+        if ret is False:
+            read_video = False
+            break
+        if frame_n < NUM_EVAL_FRAMES:
+            frames.append(frame)
+            if frame_n == NUM_EVAL_FRAMES - 1:
+                digits = get_digits(frames)
+                confidence, predicted = parse_digits(model, digits)
+                furnace = get_readout(predicted, FURNACE_INDEXES)
+                crucible = get_readout(predicted, CRUCIBLE_INDEXES)
+                wire = get_readout(predicted, WIRE_INDEXES, WIRE_FORMAT)
+                print('{0},{1},{2}'.format(furnace, crucible, wire))
+
 
 cap.release()
 
-inputs = Variable(digits)
-outputs = softmax(model(inputs))
 
-confidence, predicted = torch.max(outputs.data, 1)
+
