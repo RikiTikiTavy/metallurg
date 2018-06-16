@@ -1,4 +1,4 @@
-# НА ГОВНОКОД НЕ ОБРАЩАЕМ ВНИМАНИЕ
+
 import sys
 import cv2
 import os
@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QLabel, \
 from PyQt5.QtGui import QPixmap, QImage, QPalette
 from PyQt5.QtCore import Qt, pyqtSignal
 
-# СОЗДАЙТЕ КОПИЮ ДАТАСЕТА, ТАК КАК Я ДЕЛАЮ MOVE() ФАЙЛОВ, А НЕ COPY()
+
 # RAW_FOLDER = '/home/poxyu/work/metallurg/dataset/raw'
 RAW_FOLDER = '/home/morra/Desktop/Machine_Learning/dataset/mix'
 RESULT_FOLDER = '/home/morra/Desktop/Machine_Learning/dataset/'
