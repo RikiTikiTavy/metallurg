@@ -3,3 +3,4 @@ opencv-contrib-python
 torchvision
 torch
 numpy
+imageio

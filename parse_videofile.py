@@ -6,6 +6,7 @@ from torch.autograd import Variable
 
 import numpy as np
 import cv2
+import imageio
 
 import csv
 
@@ -105,7 +106,7 @@ def create_knn(filename):
 
 def get_timestamp_roi(img, coords, thresh, thresh_type):
     roi = img[coords[0][0]:coords[0][1], coords[1][0]:coords[1][1]]
-    roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    roi = cv2.cvtColor(roi, COLOR_CONVERTER)
     ret, roi = cv2.threshold(roi, thresh, 255, thresh_type)
     return roi.astype(np.float32)
 
@@ -121,8 +122,8 @@ def parse_timestamp(model, roi, borders, timestamp_format):
     return timestamp_format.format(results)
 
 
-def get_fps(cap):
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
+def get_fps(video_reader):
+    fps = int(video_reader.get_meta_data()['fps'])
     if fps == 0:
         fps = DEFAULT_FPS
     return fps
@@ -136,19 +137,19 @@ def get_digits(frames, data_transform):
             left, top = left_top
             right, bottom = right_bottom
             digit = frame[top:bottom, left:right]
-            digit = cv2.cvtColor(digit, cv2.COLOR_BGR2GRAY)
+            digit = cv2.cvtColor(digit, COLOR_CONVERTER)
             digits.append(digit)
     digits = data_transform(np.array(digits))
     return digits
 
 
-def parse_digits(model, digits):
+def parse_digits(model, digits, num_frames):
     inputs = Variable(digits)
     outputs = softmax(model(inputs), dim=1)
     confidence, predicted = torch.max(outputs.data, 1)
     # reshape
-    confidence = confidence.view(NUM_EVAL_FRAMES, -1)
-    predicted = predicted.view(NUM_EVAL_FRAMES, -1)
+    confidence = confidence.view(num_frames, -1)
+    predicted = predicted.view(num_frames, -1)
     # max confidence
     confidence, indexes = torch.max(confidence, 0)
     # to numpy
@@ -231,11 +232,12 @@ NUM_EVAL_FRAMES = 10
 TIMESTAMP_FORMAT = '{0} {1}'
 RESULT_FORMAT = '{0[0]},{0[1]},{0[2]},{0[3]}'
 
+COLOR_CONVERTER = cv2.COLOR_RGB2GRAY
+
 
 TIMESTAMP_TEMPL_FILE = './timestamp_templates.xml'
 MODEL_FILENAME = './model.pt'
-# VIDEO_FILENAME = '/Users/poxyu/work/metallurg/ex1.avi'
-VIDEO_FILENAME = '/Users/poxyu/work/metallurg/ex1.mp4'
+VIDEO_FILENAME = '/Users/poxyu/work/metallurg/ex1.avi'
 RESULT_FILENAME = './result.csv'
 
 
@@ -245,45 +247,42 @@ def main():
 
     data_transform = get_data_transform()
 
-    cap = cv2.VideoCapture(VIDEO_FILENAME)
-    fps = get_fps(cap)
+    video_reader = imageio.get_reader(VIDEO_FILENAME)
+    fps = get_fps(video_reader)
+    total_frames = video_reader.get_length()
 
     date = None
 
     csv_data = []
 
-    read_video = True
-    while read_video:
-        frames = []
-        for frame_n in range(fps):
-            ret, frame = cap.read()
-            if ret is False:
-                read_video = False
-                break
-            if frame_n < NUM_EVAL_FRAMES:
-                frames.append(frame)
-                if frame_n == NUM_EVAL_FRAMES - 1:
-                    if date is None:
-                        date = get_timestamp_roi(frames[-1], DATE_COORDS, DATE_THRESH, cv2.THRESH_BINARY)
-                        date = parse_timestamp(model_ts, date, DATE_DIGITS, DATE_FORMAT)
+    frames = []
+    for idx, frame in enumerate(video_reader):
+        mod = idx % fps
+        if mod < NUM_EVAL_FRAMES:
+            frames.append(frame)
+            if (mod == NUM_EVAL_FRAMES - 1) or (idx == total_frames - 1):
+                if date is None:
+                    date = get_timestamp_roi(frames[-1], DATE_COORDS, DATE_THRESH, cv2.THRESH_BINARY)
+                    date = parse_timestamp(model_ts, date, DATE_DIGITS, DATE_FORMAT)
 
-                    time = get_timestamp_roi(frames[-1], TIME_COORDS, TIME_THRESH, cv2.THRESH_BINARY_INV)
-                    time = parse_timestamp(model_ts, time, TIME_DIGITS, TIME_FORMAT)
+                time = get_timestamp_roi(frames[-1], TIME_COORDS, TIME_THRESH, cv2.THRESH_BINARY_INV)
+                time = parse_timestamp(model_ts, time, TIME_DIGITS, TIME_FORMAT)
 
-                    timestamp = TIMESTAMP_FORMAT.format(date, time)
+                timestamp = TIMESTAMP_FORMAT.format(date, time)
 
-                    digits = get_digits(frames, data_transform)
-                    confidence, predicted = parse_digits(model, digits)
+                digits = get_digits(frames, data_transform)
+                num_frames = len(frames)
+                confidence, predicted = parse_digits(model, digits, num_frames)
 
-                    furnace = get_readout(predicted, FURNACE_INDEXES)
-                    crucible = get_readout(predicted, CRUCIBLE_INDEXES)
-                    wire = get_readout(predicted, WIRE_INDEXES, WIRE_FORMAT)
+                furnace = get_readout(predicted, FURNACE_INDEXES)
+                crucible = get_readout(predicted, CRUCIBLE_INDEXES)
+                wire = get_readout(predicted, WIRE_INDEXES, WIRE_FORMAT)
 
-                    csv_line = [timestamp, furnace, crucible, wire]
-                    csv_data.append(csv_line)
-                    print(RESULT_FORMAT.format(csv_line))
+                csv_line = [timestamp, furnace, crucible, wire]
+                csv_data.append(csv_line)
+                print(RESULT_FORMAT.format(csv_line))
+                frames = []
 
-    cap.release()
     write_csv(csv_data, RESULT_FILENAME)
 
 
