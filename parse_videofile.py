@@ -7,6 +7,8 @@ from torch.autograd import Variable
 import numpy as np
 import cv2
 
+import csv
+
 
 class ToTensor:
 
@@ -142,7 +144,7 @@ def get_digits(frames, data_transform):
 
 def parse_digits(model, digits):
     inputs = Variable(digits)
-    outputs = softmax(model(inputs))
+    outputs = softmax(model(inputs), dim=1)
     confidence, predicted = torch.max(outputs.data, 1)
     # reshape
     confidence = confidence.view(NUM_EVAL_FRAMES, -1)
@@ -182,6 +184,13 @@ def get_data_transform():
     return Compose([Normalize(), ToTensor()])
 
 
+def write_csv(data, filename):
+    with open(filename, 'w', newline='') as csv_file:
+        writer = csv.writer(csv_file, delimiter=',')
+        for line in data:
+            writer.writerow(line)
+
+
 # left and right borders
 TIME_COORDS = ((90, 134), (470, 726))
 TIME_THRESH = 200
@@ -219,12 +228,15 @@ WIRE_FORMAT = '0.{0}'
 DEFAULT_FPS = 40
 NUM_EVAL_FRAMES = 10
 
-RESULT_FORMAT = '{0} {1},{2},{3},{4}'
+TIMESTAMP_FORMAT = '{0} {1}'
+RESULT_FORMAT = '{0[0]},{0[1]},{0[2]},{0[3]}'
 
 
 TIMESTAMP_TEMPL_FILE = './timestamp_templates.xml'
 MODEL_FILENAME = './model.pt'
-VIDEO_FILENAME = '/Users/poxyu/work/metallurg/ex1.avi'
+# VIDEO_FILENAME = '/Users/poxyu/work/metallurg/ex1.avi'
+VIDEO_FILENAME = '/Users/poxyu/work/metallurg/ex1.mp4'
+RESULT_FILENAME = './result.csv'
 
 
 def main():
@@ -237,6 +249,8 @@ def main():
     fps = get_fps(cap)
 
     date = None
+
+    csv_data = []
 
     read_video = True
     while read_video:
@@ -256,15 +270,21 @@ def main():
                     time = get_timestamp_roi(frames[-1], TIME_COORDS, TIME_THRESH, cv2.THRESH_BINARY_INV)
                     time = parse_timestamp(model_ts, time, TIME_DIGITS, TIME_FORMAT)
 
+                    timestamp = TIMESTAMP_FORMAT.format(date, time)
+
                     digits = get_digits(frames, data_transform)
                     confidence, predicted = parse_digits(model, digits)
 
                     furnace = get_readout(predicted, FURNACE_INDEXES)
                     crucible = get_readout(predicted, CRUCIBLE_INDEXES)
                     wire = get_readout(predicted, WIRE_INDEXES, WIRE_FORMAT)
-                    print(RESULT_FORMAT.format(date, time, furnace, crucible, wire))
+
+                    csv_line = [timestamp, furnace, crucible, wire]
+                    csv_data.append(csv_line)
+                    print(RESULT_FORMAT.format(csv_line))
 
     cap.release()
+    write_csv(csv_data, RESULT_FILENAME)
 
 
 if __name__ == '__main__':
