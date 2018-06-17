@@ -1,6 +1,6 @@
+numpy
 opencv-python
 opencv-contrib-python
-torchvision
 torch
-numpy
+torchvision
 imageio
