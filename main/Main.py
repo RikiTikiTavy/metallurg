@@ -151,7 +151,41 @@ def write_csv(data, filename):
         for line in data:
             writer.writerow(line)
 
+TIME_FORMAT = '{0[0]}{0[1]}:{0[2]}{0[3]}:{0[4]}{0[5]}'
 
+DATE_FORMAT = '{0[0]}{0[1]}-{0[2]}{0[3]}-{0[4]}{0[5]}{0[6]}{0[7]}'
+
+NUM_EVAL_FRAMES = 10
+
+
+# left and right borders
+DATE_COORDS = ((90, 134), (118, 438))
+DATE_THRESH = 70
+
+# left and right borders
+TIME_DIGITS = [(0, 32), (32, 64), (96, 128), (128, 160), (192, 224), (224, 256)]
+
+TIME_THRESH = 200
+
+# left and right borders
+DATE_DIGITS = [(0, 32), (32, 64), (96, 128), (128, 160), (192, 224), (224, 256), (256, 288), (288, 320)]
+
+# left and right borders
+TIME_COORDS = ((90, 134), (470, 726))
+
+TIMESTAMP_FORMAT = '{0} {1}'
+
+# печь
+FURNACE_INDEXES = (0, 4)
+# тигель
+CRUCIBLE_INDEXES = (4, 8)
+
+# проволока
+WIRE_INDEXES = (8, 10)
+
+RESULT_FORMAT = '{0[0]},{0[1]},{0[2]},{0[3]}'
+
+WIRE_FORMAT = '0.{0}'
 
 
 
@@ -169,41 +203,7 @@ def main():
 
     csv_data = []
 
-    TIME_FORMAT = '{0[0]}{0[1]}:{0[2]}{0[3]}:{0[4]}{0[5]}'
 
-    DATE_FORMAT = '{0[0]}{0[1]}-{0[2]}{0[3]}-{0[4]}{0[5]}{0[6]}{0[7]}'
-
-    NUM_EVAL_FRAMES = 10
-
-
-    # left and right borders
-    DATE_COORDS = ((90, 134), (118, 438))
-    DATE_THRESH = 70
-
-    # left and right borders
-    TIME_DIGITS = [(0, 32), (32, 64), (96, 128), (128, 160), (192, 224), (224, 256)]
-
-    TIME_THRESH = 200
-
-    # left and right borders
-    DATE_DIGITS = [(0, 32), (32, 64), (96, 128), (128, 160), (192, 224), (224, 256), (256, 288), (288, 320)]
-
-    # left and right borders
-    TIME_COORDS = ((90, 134), (470, 726))
-
-    TIMESTAMP_FORMAT = '{0} {1}'
-
-    # печь
-    FURNACE_INDEXES = (0, 4)
-    # тигель
-    CRUCIBLE_INDEXES = (4, 8)
-
-    # проволока
-    WIRE_INDEXES = (8, 10)
-
-    RESULT_FORMAT = '{0[0]},{0[1]},{0[2]},{0[3]}'
-
-    WIRE_FORMAT = '0.{0}'
 
     frames = []
     for idx, frame in enumerate(video_reader):
