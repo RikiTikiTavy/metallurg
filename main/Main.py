@@ -1,45 +1,52 @@
-import torch
-from torch.nn import Conv2d, Module, BatchNorm1d, BatchNorm2d, ReLU, Linear, MaxPool2d, Dropout
-from torch.nn.functional import softmax
-from torchvision.transforms import Compose
-from torch.autograd import Variable
-
-import numpy as np
-import cv2
-import imageio
-
 import csv
 
+import cv2
+import imageio
+import numpy as np
+import torch
+from torch.autograd import Variable
+from torch.nn import Module, Linear, MaxPool2d, Dropout
+from torch.nn.functional import softmax
+from torchvision.transforms import Compose
+
+from main.parse_videofile import ConvBNRelu
+from main.parse_videofile import DenseBNRelu
+from main.parse_videofile import Normalize
+from main.parse_videofile import ToTensor
 
 VIDEO_FILENAME = '/home/morra/Desktop/Machine_Learning/video.avi'
+MODEL_FILENAME = './model.pt'
 
 DEFAULT_FPS = 40
 
+TIMESTAMP_TEMPL_FILE = './timestamp_templates.xml'
 
-# left and right borders
-TIME_COORDS = ((90, 134), (470, 726))
-TIME_THRESH = 200
-# left and right borders
-TIME_DIGITS = [(0, 32), (32, 64), (96, 128), (128, 160), (192, 224), (224, 256)]
+NUM_EVAL_FRAMES = 10
 
 # left and right borders
 DATE_COORDS = ((90, 134), (118, 438))
 DATE_THRESH = 70
+
+
+# left and right borders
+TIME_DIGITS = [(0, 32), (32, 64), (96, 128), (128, 160), (192, 224), (224, 256)]
+
+TIME_THRESH = 200
+
+# left and right borders
+TIME_COORDS = ((90, 134), (470, 726))
+
+
 # left and right borders
 DATE_DIGITS = [(0, 32), (32, 64), (96, 128), (128, 160), (192, 224), (224, 256), (256, 288), (288, 320)]
+
+TIMESTAMP_FORMAT = '{0} {1}'
+
 
 
 
 TIME_FORMAT = '{0[0]}{0[1]}:{0[2]}{0[3]}:{0[4]}{0[5]}'
 DATE_FORMAT = '{0[0]}{0[1]}-{0[2]}{0[3]}-{0[4]}{0[5]}{0[6]}{0[7]}'
-
-READOUT_COORDS = [
-    ((1465, 858), (1529, 922)), ((1514, 858), (1578, 922)), ((1564, 858), (1628, 922)), ((1613, 858), (1677, 922)),
-    ((1465, 906), (1529, 970)), ((1514, 906), (1578, 970)), ((1564, 906), (1628, 970)), ((1613, 906), (1677, 970)),
-    ((1564, 1004), (1628, 1068)), ((1613, 1004), (1677, 1068))
-]
-
-SPACE_CLASS = 10
 
 # печь
 FURNACE_INDEXES = (0, 4)
@@ -51,76 +58,12 @@ WIRE_FORMAT = '0.{0}'
 
 
 
-NUM_EVAL_FRAMES = 10
 
-TIMESTAMP_FORMAT = '{0} {1}'
 RESULT_FORMAT = '{0[0]},{0[1]},{0[2]},{0[3]}'
 
-COLOR_CONVERTER = cv2.COLOR_RGB2GRAY
 
-
-TIMESTAMP_TEMPL_FILE = './timestamp_templates.xml'
-MODEL_FILENAME = './model.pt'
 
 RESULT_FILENAME = './result.csv'
-
-class ToTensor:
-
-    def __call__(self, x):
-        x = x.reshape(x.shape[0], 1, x.shape[1], x.shape[2])
-        x = torch.from_numpy(x)
-
-        return x
-
-
-class Normalize:
-
-    def __init__(self, mean=0.5, std=0.5):
-        self.mean = mean
-        self.std = std
-
-    def __call__(self, x):
-        x = (x / 255).astype(np.float32)
-
-        x -= np.ones(x.shape) * self.mean
-        x /= np.ones(x.shape) * self.std
-
-        return x
-
-
-def conv3x3(in_, out):
-    return Conv2d(in_, out, 3, padding=1)
-
-
-class ConvBNRelu(Module):
-
-    def __init__(self, in_, out):
-        super(ConvBNRelu, self).__init__()
-        self.conv = conv3x3(in_, out)
-        self.bn = BatchNorm2d(out)
-        self.activation = ReLU(inplace=True)
-
-    def forward(self, x):
-        x = self.conv(x)
-        x = self.bn(x)
-        x = self.activation(x)
-        return x
-
-
-class DenseBNRelu(Module):
-
-    def __init__(self, input, output):
-        super(DenseBNRelu, self).__init__()
-        self.fc = Linear(input, output)
-        self.bn = BatchNorm1d(output)
-        self.activation = ReLU(inplace=True)
-
-    def forward(self, x):
-        x = self.fc(x)
-        x = self.bn(x)
-        x = self.activation(x)
-        return x
-
 
 class MetallurgNet(Module):
 
@@ -159,7 +102,7 @@ def create_knn(filename):
 
 def get_timestamp_roi(img, coords, thresh, thresh_type):
     roi = img[coords[0][0]:coords[0][1], coords[1][0]:coords[1][1]]
-    roi = cv2.cvtColor(roi, COLOR_CONVERTER)
+    roi = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
     ret, roi = cv2.threshold(roi, thresh, 255, thresh_type)
     return roi.astype(np.float32)
 
@@ -182,6 +125,12 @@ def get_fps(video_reader):
     return fps
 
 
+READOUT_COORDS = [
+    ((1465, 858), (1529, 922)), ((1514, 858), (1578, 922)), ((1564, 858), (1628, 922)), ((1613, 858), (1677, 922)),
+    ((1465, 906), (1529, 970)), ((1514, 906), (1578, 970)), ((1564, 906), (1628, 970)), ((1613, 906), (1677, 970)),
+    ((1564, 1004), (1628, 1068)), ((1613, 1004), (1677, 1068))
+]
+
 def get_digits(frames, data_transform):
     digits = []
     for frame in frames:
@@ -190,7 +139,7 @@ def get_digits(frames, data_transform):
             left, top = left_top
             right, bottom = right_bottom
             digit = frame[top:bottom, left:right]
-            digit = cv2.cvtColor(digit, COLOR_CONVERTER)
+            digit = cv2.cvtColor(digit, cv2.COLOR_RGB2GRAY)
             digits.append(digit)
     digits = data_transform(np.array(digits))
     return digits
@@ -213,6 +162,7 @@ def parse_digits(model, digits, num_frames):
     predicted = predicted[indexes, np.arange(predicted.shape[1])]
     return confidence, predicted
 
+SPACE_CLASS = 10
 
 def get_readout(predicted, indexes, readout_format='{0}'):
     readout = predicted[indexes[0]:indexes[1]]
